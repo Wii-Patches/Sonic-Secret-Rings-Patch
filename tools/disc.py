@@ -69,10 +69,12 @@ def run_patch(image_path, log, done, which=('cc', 'gc'), ios=None, dest=None):
             if not got:
                 raise RuntimeError('could not read sys/boot.bin from the extracted disc')
             disc_id, disc_ver = got
+            disc_id = next((k for k, v in ALL_REGIONS.items()
+                            if disc_id in (k, v.get('id6'))), disc_id)
             if disc_id not in ALL_REGIONS:
                 raise RuntimeError('%s is not a recognized Sonic and the Secret Rings release.\n\n'
                                    'Supported:\n%s' % (disc_id, '\n'.join(
-                                       '  %s: %s' % (k, v['label']) for k, v in ALL_REGIONS.items())))
+                                       '  %s (%s): %s' % (v.get('id6', k), k, v['label']) for k, v in ALL_REGIONS.items())))
 
             region = disc_id
             reg_info = ALL_REGIONS[region]
