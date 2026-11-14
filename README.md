@@ -33,6 +33,7 @@ Riivolution patches are also included.
 | **B** | Button 1 | Brake / Backstep |
 | **X** | Button A | Speed Break |
 | **Y** | Button B | Time Break |
+| **C-Stick** | Shake | Shake (rub the ring, Speed Break) |
 | **L** | D-Pad Up | Step Left |
 | **R** | D-Pad Down | Step Right |
 | **D-Pad** | Sideways D-Pad | Menu Navigation |
@@ -49,6 +50,7 @@ Riivolution patches are also included.
 | **B** | Button 1 | Brake / Backstep |
 | **X** | Button A | Speed Break |
 | **Y** | Button B | Time Break |
+| **Right Stick** | Shake | Shake (rub the ring, Speed Break) |
 | **L / ZL** | D-Pad Up | Step Left |
 | **R / ZR** | D-Pad Down | Step Right |
 | **D-Pad** | Sideways D-Pad | Menu Navigation |
