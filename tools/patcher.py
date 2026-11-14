@@ -15,16 +15,16 @@ ORDER = ('combo', 'cc', 'gc')
 
 
 def detect_region(dol):
-    """Detect which Sonic and the Secret Rings release this main.dol is."""
-    for region in ('RSRE01', 'RSRP01', 'RSRJ01'):
-        if features.available('combo', region):
-            f = features.load('combo', region)
-            if not f.check_pristine(dol) or f.is_applied(dol):
-                return region
-        elif features.available('cc', region):
-            f = features.load('cc', region)
-            if not f.check_pristine(dol) or f.is_applied(dol):
-                return region
+    """Detect which Sonic and the Secret Rings release this main.dol is (by its retail hash,
+    or for an already patched one, by which release's patch it carries)."""
+    import hashlib
+    h = hashlib.md5(bytes(dol.data)).hexdigest()
+    for region, meta in ALL_REGIONS.items():
+        if meta.get('dol_md5') == h:
+            return region
+    for region in ALL_REGIONS:
+        if any(features.load(n, region).is_applied(dol) for n in ORDER if features.available(n, region)):
+            return region
     return None
 
 

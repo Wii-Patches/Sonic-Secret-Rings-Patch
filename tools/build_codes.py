@@ -67,7 +67,6 @@ def generate_riivolution():
         '  <id game="RSR">',
         '    <region type="E" />',
         '    <region type="P" />',
-        '    <region type="J" />',
         '  </id>',
         '  <options>',
         '    <section name="Sonic and the Secret Rings Controller Patch">',
@@ -88,7 +87,7 @@ def generate_riivolution():
 
     for fkey in ('combo', 'cc', 'gc'):
         lines.append(f'  <patch id="{fkey}">')
-        for reg in ('RSRE01', 'RSRP01', 'RSRJ01'):
+        for reg in tuple(ALL_REGIONS):
             if features.available(fkey, reg):
                 feat = features.load(fkey, reg)
                 lines.append(f'    <!-- {reg}: {feat.title} -->')

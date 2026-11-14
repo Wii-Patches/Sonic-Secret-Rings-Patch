@@ -2,7 +2,7 @@
 
 Play **Sonic and the Secret Rings** (Wii) with a **GameCube controller** or a **Classic
 Controller** instead of tilting and waving a Wii Remote sideways. Supports story mode and
-all game modes across USA (`RSRE01`), European (`RSRP01`), and Japanese (`RSRJ01`) releases.
+all game modes across the USA (`RSRE8P`) and European (`RSRP8P`) releases.
 
 The patches are applied to your own copy of the game: drop a clean `.wbfs`, `.iso`, or `main.dol`
 onto the patcher and play the result on a Wii (USB loader) or in Dolphin. Gecko codes and
@@ -12,17 +12,18 @@ Riivolution patches are also included.
 
 ## Features
 
-- **GameCube Controller Support**: Native GameCube Controller (Port 1) controls for story mode.
+- **GameCube Controller Support**: GameCube Controller controls (the port matching the player's Wii Remote, so Port 1 for player 1) for story mode.
   Left Control Stick steers Sonic and adjusts jump pitch, with full button mappings.
 - **Classic Controller Support**: Full Classic Controller and Classic Controller Pro support
   via Wii Remote extension port with Left Stick steering and pitch.
 - **Story Mode & Party Mode**: Party mode native GC support is preserved while story mode
   now supports GameCube & Classic Controllers seamlessly.
-- **Cross-Region Support**: USA (`RSRE01`), Europe (`RSRP01`), and Japan (`RSRJ01`).
+- **Cross-Region Support**: USA (`RSRE8P`) and Europe (`RSRP8P`). The Japanese release is not supported yet.
+- **Keep a Wii Remote connected**: the pad works alongside it (the remote's own buttons still work, its tilt is ignored while you use the pad). Playing with no Wii Remote at all is not supported yet.
 
 ## Controls
 
-### GameCube Controller (Port 1)
+### GameCube Controller
 
 | Input | Wii Remote Equivalent | Action |
 | --- | --- | --- |
@@ -34,7 +35,7 @@ Riivolution patches are also included.
 | **Y** | Button B | Time Break |
 | **L** | D-Pad Up | Step Left |
 | **R** | D-Pad Down | Step Right |
-| **D-Pad Left / Right** | D-Pad Up / Down | Sideways D-Pad Navigation |
+| **D-Pad** | Sideways D-Pad | Menu Navigation |
 | **Start** | Plus (+) | Pause |
 | **Z** | Minus (-) | Back / Map / Info |
 
@@ -79,6 +80,14 @@ python3 tools/patcher.py /path/to/main.dol /path/to/patched_main.dol --combo
 
 - **Gecko Codes**: Ready-to-use cheat codes for Dolphin (`codes/*.ini`) and USB Loaders (`codes/*.txt`).
 - **Riivolution**: XML patch included in `riivolution/SonicSecretRings.xml`.
+
+## Building the patch
+
+The prebuilt definitions in `tools/prebuilt/` are generated from `src/pad/` with devkitPPC:
+```bash
+python3 tools/build.py --dol RSRE01=usa/main.dol --dol RSRP01=pal/main.dol
+python3 tools/build_codes.py
+```
 
 ## License
 
