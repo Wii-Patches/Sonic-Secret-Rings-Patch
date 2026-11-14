@@ -19,7 +19,7 @@ Riivolution patches are also included.
 - **Story Mode & Party Mode**: Party mode native GC support is preserved while story mode
   now supports GameCube & Classic Controllers seamlessly.
 - **Cross-Region Support**: USA (`RSRE8P`) and Europe (`RSRP8P`). The Japanese release is not supported yet.
-- **Keep a Wii Remote connected**: the pad works alongside it (the remote's own buttons still work, its tilt is ignored while you use the pad). Playing with no Wii Remote at all is not supported yet.
+- **No Wii Remote needed**: a GameCube Controller works on its own. If a Wii Remote is connected too, its buttons still work and its tilt is ignored while you use the pad. A Classic Controller needs its Wii Remote.
 
 ## Controls
 

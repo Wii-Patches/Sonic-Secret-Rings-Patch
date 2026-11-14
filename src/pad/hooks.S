@@ -1,52 +1,61 @@
-/* Entry stubs for the pad hooks, both in the game's per-frame pad loop.  Every volatile
- * register is free at both sites; the loop keeps its state in r17-r31:
- *   r17 = the input manager (+4: the per-channel records, 0x38 bytes each)   r26 = channel * 0x38
+/* Entry stubs for the pad hooks.  The pad loop keeps its state in r17-r31 and every volatile
+ * register is free at both of its sites:
  *   r21 = &this channel's KPAD status buffer pointer    r18 = statuses KPADRead returned
  *   r22 = this channel's PADStatus (PADRead + PADClamp) r20 = channel
+ *   r24 = &this channel's "remote connected" byte   r26 = channel * 0x38 (records at 4(r17))
  *
- * Each hook keeps a little state inside its own body (zero when installed), so it needs no
- * free RAM of the game's: the same words work as a patched DOL, a Riivolution patch or a
- * Gecko C2 code.  The last word is the slot the installer turns into the branch back. */
+ * The shared state (pad_state, zero when installed) sits in the first hook's body, so no free
+ * RAM of the game's is needed.  The last word of each stub is the slot the installer turns into
+ * the branch back. */
     .section .padstart, "ax"
     b       _entry
+#if defined(HOOK_REMOTE)
+    .globl  pad_state
+pad_state:
+    .space  0x40
+#endif
 
     .section .padtail, "ax"
     .globl _entry
 _entry:
 #if defined(HOOK_REMOTE)
-    # remote mode, just before the converter (lwz r0,4(r17))
+    # pad loop, just before the remote-mode converter (lwz r0,4(r17))
     stwu    1, -0x20(1)
     mflr    0
     stw     0, 0x24(1)
     lwz     3, 0(21)            # KPAD statuses
     mr      4, 18               # how many
-    mr      5, 22               # PADStatus
-    mr      6, 20               # channel
-    bl      1f                  # r7 = the state below
-    .space  0x40
-1:  mflr    7
+    mr      5, 20               # channel
+    lis     6, pad_state@ha
+    addi    6, 6, pad_state@l
     bl      pad_remote
+    mr      18, 3               # a status made up for a pad with no remote
     lwz     0, 0x24(1)
     mtlr    0
     addi    1, 1, 0x20
     lwz     0, 4(17)            # original instruction
-#elif defined(HOOK_PAD)
-    # pad mode: replaces "bl <pad converter>" (r3 = the record, r4 = PADStatus)
+    nop
+#elif defined(HOOK_TOP)
+    # pad loop, top of each channel (lwz r0,4(r17))
     stwu    1, -0x20(1)
     mflr    0
     stw     0, 0x24(1)
-    bl      pad_converter       # the original call (address given to the linker)
-    lwz     3, 4(17)
-    add     3, 3, 26            # the record
-    mr      4, 22               # PADStatus
-    mr      5, 20               # channel
-    lwz     7, 0(21)            # KPAD status buffer
-    bl      1f                  # r6 = the state below
-    .space  0x40
-1:  mflr    6
-    bl      pad_only
+    mr      3, 22               # PADStatus
+    mr      4, 20               # channel
+    mr      5, 24               # this channel's "remote connected" byte
+    lwz     6, 0(21)            # KPAD status buffer
+    lwz     7, 4(17)
+    add     7, 7, 26            # this channel's record
+    bl      pad_top
     lwz     0, 0x24(1)
     mtlr    0
     addi    1, 1, 0x20
-#endif
+    cmpwi   3, 0
+    beq     1f
+    lis     12, loop_next@ha    # handled: on to the next channel
+    addi    12, 12, loop_next@l
+    mtctr   12
+    bctr
+1:  lwz     0, 4(17)            # original instruction
     nop
+#endif

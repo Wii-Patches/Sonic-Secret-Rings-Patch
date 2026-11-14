@@ -9,15 +9,16 @@
  *   - pad mode (no Wii Remote): from the GameCube pad, with a button layout and stick handling
  *     the menus and story mode do not understand.
  *
- * Two hooks make a pad behave like a remote in both:
+ * Two hooks make a pad behave like a remote:
  *
  *   HOOK_REMOTE  just before the remote-mode converter: rewrites the KPAD statuses so they read
  *                as the remote doing what the pad / Classic Controller does.  The game then runs
  *                them through its own smoothing exactly as it does for a real remote.
- *   HOOK_PAD     right after the pad-mode converter: rewrites the record it produced into the
- *                record remote mode would have produced (GameCube controller only).
+ *   HOOK_TOP     at the top of each channel: remembers the GameCube pad, and when no remote is
+ *                connected builds the remote's KPAD status itself, runs the remote converter on
+ *                it and skips pad mode (GameCube controller only).
  *
- * In both: the buttons become the remote buttons they stand for, the left stick tilts the
+ * Either way: the buttons become the remote buttons they stand for, the left stick tilts the
  * remote (left / right steers, forward / back leans) and the C-stick (Classic Controller:
  * right stick) shakes it.  The remote's own buttons keep working; its motion is replaced while
  * a pad is in use, so a remote lying on the table does not steer.
@@ -86,10 +87,12 @@ typedef unsigned char u8;
 #define PAD_ERR_TRANSFER (-3)
 
 /* the hook's own variables, inside its body (zero when installed) */
+extern struct state pad_state;
 struct state {
     u8 pad[4][12];  /* per port: the last PADStatus that arrived without an error */
     u8 valid[4];
     u32 tick;       /* frames, for the shake's back-and-forth */
+    u16 prev[4];    /* per port: last frame's buttons, for press / release (no-remote mode) */
 };
 
 /* what the player is doing, whichever controller it came from */
@@ -112,13 +115,13 @@ static inline float absf(float v)
     return v < 0 ? -v : v;
 }
 
-static inline float clamp1(float v)
+static inline __attribute__((unused)) float clamp1(float v)
 {
     return v > 1.0f ? 1.0f : v < -1.0f ? -1.0f : v;
 }
 
 /* a stick axis with the dead zone removed and a gentle curve near the centre */
-static float curve(float v)
+static __attribute__((unused)) float curve(float v)
 {
     const float d = 0.12f;
     float a = absf(v);
@@ -132,7 +135,7 @@ static float curve(float v)
 }
 
 /* square root without fsqrt (Broadway has none): rsqrte estimate + Newton steps */
-static float sqrtf_(float x)
+static __attribute__((unused)) float sqrtf_(float x)
 {
     double y;
     int i;
@@ -146,7 +149,7 @@ static float sqrtf_(float x)
 
 /* the remote's accelerometer for this input: tilted by the left stick (full stick is about 45
  * degrees), or shaken back and forth while the C-stick is pushed (what a real shake reads as) */
-static void accel(const struct in *v, u32 tick, float *ax, float *ay, float *az)
+static __attribute__((unused)) void accel(const struct in *v, u32 tick, float *ax, float *ay, float *az)
 {
     const float tilt = 0.72f;
     float x, z, y;
@@ -165,7 +168,7 @@ static void accel(const struct in *v, u32 tick, float *ax, float *ay, float *az)
     *az = z;
 }
 
-#ifdef USE_GC
+#if defined(USE_GC) && !defined(HOOK_PROBE)
 /* keep port `chan`'s last good response; 1 while a pad is plugged in */
 static int gc_get(struct state *st, const u8 *pad, u32 chan, struct in *v)
 {
@@ -210,6 +213,16 @@ static int gc_get(struct state *st, const u8 *pad, u32 chan, struct in *v)
 }
 #endif
 
+#if defined(USE_GC) && defined(HOOK_REMOTE)
+static int gc_cached(struct state *st, u32 chan, struct in *v)
+{
+    static const u8 none[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (u8)PAD_ERR_TRANSFER, 0};
+    if (chan >= 4 || !st->valid[chan])
+        return 0;
+    return gc_get(st, none, chan, v);       /* "nothing new": reads the cache */
+}
+#endif
+
 #ifdef HOOK_REMOTE
 #ifdef USE_CC
 static int cc_get(const u8 *k, struct in *v)
@@ -240,29 +253,26 @@ static int cc_get(const u8 *k, struct in *v)
 }
 #endif
 
-/* k: this channel's KPAD statuses (k[0] the newest), n of them; pad: its PADStatus */
-void pad_remote(u8 *k, s32 n, u8 *pad, u32 chan, struct state *st)
+/* k: this channel's KPAD statuses (k[0] the newest), n of them; returns the new n */
+s32 pad_remote(u8 *k, s32 n, u32 chan, struct state *st)
 {
     struct in v;
     int used = 0;
     float ax, ay, az;
     s32 i;
 
-    (void)pad;
-    (void)chan;
     st->tick++;
 #ifdef USE_GC
-    used = gc_get(st, pad, chan, &v);       /* runs every frame to keep the cache fresh */
+    used = gc_cached(st, chan, &v);
 #endif
-    if (n <= 0)
-        return;
 #ifdef USE_CC
-    if (cc_get(k, &v))                      /* a Classic Controller wins over the pad */
+    if (n > 0 && cc_get(k, &v))             /* a Classic Controller wins over the pad */
         used = 1;
 #endif
     if (!used)
-        return;
-
+        return n;
+    if (n <= 0)
+        return n;
     accel(&v, st->tick, &ax, &ay, &az);
     for (i = 0; i < n; i++) {
         u8 *s = k + i * KPAD_SIZE;
@@ -271,64 +281,47 @@ void pad_remote(u8 *k, s32 n, u8 *pad, u32 chan, struct state *st)
         ((float *)(s + K_ACC))[1] = ay;
         ((float *)(s + K_ACC))[2] = az;
     }
+    return n;
 }
 #endif
 
-#ifdef HOOK_PAD
-/* the remote mode converter's button bits */
-static u32 game_bits(u32 b)
-{
-    u32 o = 0;
-    if (b & WM_UP) o |= 0x10;
-    if (b & WM_DOWN) o |= 0x20;
-    if (b & WM_RIGHT) o |= 0x80;
-    if (b & WM_LEFT) o |= 0x40;
-    if (b & WM_A) o |= 0x01;
-    if (b & WM_B) o |= 0x02;
-    if (b & WM_2) o |= 0x04;
-    if (b & WM_1) o |= 0x08;
-    if (b & WM_MINUS) o |= 0x88000;
-    if (b & WM_HOME) o |= 0x100000;
-    if (b & WM_PLUS) o |= 0x4000;
-    return o;
-}
+#ifdef HOOK_TOP
+/* the game's own functions (addresses given to the linker) */
+extern s32 wpad_probe(s32 chan, u32 *type);
+extern void game_conv(void *rec, u8 *k, s32 n, u32 chan);
 
-/* r: the record the pad-mode converter just wrote from pad (this channel's PADStatus);
- * k: the channel's KPAD status buffer, which pad mode leaves untouched from frame to frame */
-void pad_only(struct rec *r, u8 *pad, u32 chan, struct state *st, u8 *k)
+/* top of the pad loop, every channel every frame.  Remembers the channel's GameCube pad, and
+ * when there is no Wii Remote on the channel, plays one: builds the KPAD status a remote doing
+ * what the pad does would give, runs the game's remote converter on it and returns 1 so the
+ * stub skips the rest of the channel (the WPAD calls a missing remote would hang).
+ * conn: the game's "a Wii Remote is connected on this channel" byte, which it otherwise only
+ * sets from the connect callback; story mode pauses ("Communications with the Wii Remote have
+ * been interrupted") while it is clear. */
+s32 pad_top(const u8 *pad, u32 chan, u8 *conn, u8 *k, void *rec)
 {
+    struct state *st = &pad_state;
     struct in v;
-    u32 prev, hold, x;
-    float ax, ay, az, one;
+    float ax, ay, az;
+    u32 type, i;
 
-    st->tick++;
     if (!gc_get(st, pad, chan, &v))
-        return;
-
-    /* the game's controller manager pauses a story stage with "Communications with the Wii
-     * Remote have been interrupted" unless the channel's newest KPAD status reads as a remote
-     * without errors: make it one (a bare remote, no extension) */
-    k[K_ERR] = 0;
-    *(u32 *)(k + K_DEV) = 0;
-
-    /* the converter computed press / release against last frame's word, which this hook wrote:
-     * (hold & ~trig) | release gives that word back exactly */
-    prev = (r->hold & ~r->trig) | r->rel;
-    hold = game_bits(v.btn);
-    x = prev ^ hold;
-    r->hold = hold;
-    r->nhold = ~hold;
-    r->trig = hold & x;
-    r->rel = prev & x;
-
-    one = r->tilt[2];                       /* the converter's "nothing" value */
+        return 0;
+    if (wpad_probe(chan, &type) != -1)      /* a remote is there (or busy): the usual path */
+        return 0;
+    st->tick++;
+    for (i = 0; i < KPAD_SIZE; i++)
+        k[i] = 0;
     accel(&v, st->tick, &ax, &ay, &az);
-    r->tilt[0] = -ax;
-    r->tilt[1] = -az;
-    r->tilt[2] = ay;
-    r->f7 = r->f8 = r->f9 = one;            /* no Nunchuk */
-    r->flags |= 0x8000;                     /* the player reads it as a remote, not as sticks */
-    if (hold || absf(v.sx) > 0.12f || absf(v.sy) > 0.12f)
-        r->flags |= 4;                      /* input this frame (keeps the demo from starting) */
+    *(u32 *)(k + K_HOLD) = v.btn;
+    *(u32 *)(k + K_HOLD + 4) = v.btn & ~st->prev[chan];     /* trig */
+    *(u32 *)(k + K_HOLD + 8) = st->prev[chan] & ~v.btn;     /* release */
+    st->prev[chan] = (u16)v.btn;
+    ((float *)(k + K_ACC))[0] = ax;
+    ((float *)(k + K_ACC))[1] = ay;
+    ((float *)(k + K_ACC))[2] = az;
+    game_conv(rec, k, 1, chan);
+    ((struct rec *)rec)->flags |= 0x8000;   /* what the loop adds after the converter */
+    *conn = 1;
+    return 1;
 }
 #endif

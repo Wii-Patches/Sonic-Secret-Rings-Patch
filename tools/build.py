@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 from dol import Dol
 from features import PREBUILT, TITLES, dump
 from layout import CAVE_BASE, CAVE_LIMIT
-from ops import Feature, Hook, Patch
+from ops import Feature, Hook
 from regions import REGIONS
 
 DEVKIT = os.environ.get('DEVKITPPC', '/opt/devkitpro/devkitPPC')
@@ -34,22 +34,13 @@ SRC = os.path.join(HERE, '..', 'src', 'pad')
 
 REF = 'RSRE01'
 # (name, USA site, what the site holds, note)
+# (name, USA site, what the site holds, variants that use it, note); REMOTE must come first
+# (it holds the shared state the others link against)
 HOOKS = [
-    ('REMOTE', 0x800B5D00, 0x80110004,
+    ('REMOTE', 0x800B5D00, 0x80110004, ('combo', 'cc', 'gc'),
      'pad loop, remote mode: GameCube / Classic Controller as the Wii Remote (buttons, tilt, shake)'),
-]
-# Work in progress, not shipped: playing with no Wii Remote at all.  HOOK_PAD (src/pad/) turns
-# the game's own GameCube-pad record into a remote record, which gets through the menus, but a
-# story stage still pauses ("Communications with the Wii Remote have been interrupted") from a
-# check in the game's RSO modules that is not found yet.  It would also change how Party mode's
-# native GameCube support behaves.  Add it back here (and to PATCHES) once that is solved:
-#   ('PAD', 0x800B5D3C, None, 'pad loop, no Wii Remote: the GameCube controller as a Wii Remote'),
-PAD_HOOK = False
-# (USA address, what it holds, replacement, note): the controller manager's "is a Wii Remote
-# connected on this channel" call, which a GameCube controller on its own can never satisfy
-PATCHES = [] if True else [
-    (0x80214CE0, 'bl 0x800B5E14', 0x38600001,
-     'controller manager: accept a channel whose KPAD status has no error (a GameCube controller in pad mode)'),
+    ('TOP', 0x800B5894, 0x80110004, ('combo', 'gc'),
+     'pad loop, every channel: the GameCube controller as a Wii Remote when none is connected'),
 ]
 WINDOW = (-40, 24)          # instructions matched around a site
 
@@ -107,8 +98,10 @@ def compile_hook(hook, defs, base):
                           [os.path.join(SRC, 'hooks.S'), '-o', tmp + '/h.o'])
     # linked at the address the trampoline will live at (its float constants are absolute)
     subprocess.check_call([GCC + 'ld', '-T', os.path.join(SRC, 'link.ld'), '--section-start=.text=0x%08X' % base,
-                           '--defsym=pad_converter=%s' % defs.get('PAD_CONVERTER', '0'),
-                           '-o', tmp + '/p.elf', tmp + '/h.o', tmp + '/b.o'])
+                           '--defsym=wpad_probe=%s' % defs.get('WPAD_PROBE', '0'),
+                           '--defsym=game_conv=%s' % defs.get('GAME_CONV', '0'),
+                           '--defsym=loop_next=%s' % defs.get('LOOP_NEXT', '0'),
+                           '-o', tmp + '/p.elf'] + (['--defsym=pad_state=' + defs['PAD_STATE']] if 'PAD_STATE' in defs else []) + [ tmp + '/h.o', tmp + '/b.o'])
     subprocess.check_call([GCC + 'objcopy', '-O', 'binary', tmp + '/p.elf', tmp + '/p.bin'])
     b = open(tmp + '/p.bin', 'rb').read()
     return list(struct.unpack('>%dI' % (len(b) // 4), b))
@@ -124,39 +117,39 @@ def bl_target(dol, site):
 
 def build(region, dol, ref):
     sites = {}
-    for name, usa, want, _ in HOOKS:
+    for name, usa, want, _, _ in HOOKS:
         site = usa if region == REF else find_site(ref, dol, usa)
         orig = struct.unpack('>I', dol.read(site, 4))[0]
-        if want is not None and orig != want:
+        if orig != want:
             raise SystemExit('%s: %s site 0x%08X holds 0x%08X, expected 0x%08X' % (region, name, site, orig, want))
         sites[name] = (site, orig)
-    conv = bl_target(dol, sites['PAD'][0]) if 'PAD' in sites else 0
-    patches = []
-    for usa, want, new, note in PATCHES:
-        addr = usa if region == REF else find_site(ref, dol, usa)
-        ref_target = int(want.split()[1], 16)
-        # the call must go to the same getter (relocated the same way as the call itself)
-        if region == REF and bl_target(dol, addr) != ref_target:
-            raise SystemExit('%s: 0x%08X is not %s' % (region, addr, want))
-        patches.append(Patch(addr, struct.pack('>I', new), dol.read(addr, 4), note))
+    # the game's own code the TOP hook calls, found from the loop's calls (relative to the sites)
+    top, rem = sites['TOP'][0], sites['REMOTE'][0]
+    game = {'WPAD_PROBE': '0x%08X' % bl_target(dol, top + 0x20),     # bl WPADProbe
+            'GAME_CONV': '0x%08X' % bl_target(dol, rem + 0x14),       # bl <remote converter>
+            'LOOP_NEXT': '0x%08X' % (rem + 0xC0)}                     # addi r26,r26,56
+    if struct.unpack('>I', dol.read(rem + 0xC0, 4))[0] != 0x3B5A0038:
+        raise SystemExit('%s: loop increment not where expected' % region)
     out = {}
     for fname, flags in VARIANTS.items():
-        ops, cur = [], CAVE_BASE
-        for name, _, _, note in HOOKS:
-            if name == 'PAD' and 'USE_GC' not in flags:
+        ops, cur, state = [], CAVE_BASE, None
+        for name, _, _, used, note in HOOKS:
+            if fname not in used:
                 continue
             defs = {f: None for f in flags}
-            defs['PAD_CONVERTER'] = '0x%08X' % conv
+            if state is not None:
+                defs['PAD_STATE'] = '0x%08X' % state
+            defs.update(game)
             w = compile_hook(name, defs, cur)
             assert w[-1] == 0x60000000, 'the stub must end in the nop slot'
             w[-1] = 0
+            if name == 'REMOTE':
+                state = cur + 4
             site, orig = sites[name]
             ops.append(Hook(site, orig, w, cur, note))
             cur += (len(w) * 4 + 31) & ~31
         if cur > CAVE_LIMIT:
             raise SystemExit('hooks overflow the injected section')
-        if 'USE_GC' in flags:
-            ops += patches
         out[fname] = Feature(fname, TITLES[fname], region, ops)
     return sites, out
 
