@@ -67,6 +67,7 @@ def generate_riivolution():
         '  <id game="RSR">',
         '    <region type="E" />',
         '    <region type="P" />',
+        '    <region type="J" />',
         '  </id>',
         '  <options>',
         '    <section name="Sonic and the Secret Rings Controller Patch">',

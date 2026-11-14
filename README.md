@@ -2,7 +2,7 @@
 
 Play **Sonic and the Secret Rings** (Wii) with a **GameCube controller** or a **Classic
 Controller** instead of tilting and waving a Wii Remote sideways. Supports story mode and
-all game modes across the USA (`RSRE8P`) and European (`RSRP8P`) releases.
+all game modes across the USA (`RSRE8P`), European (`RSRP8P`) and Japanese (`RSRJ8P`, *Sonic to Himitsu no Ring*) releases.
 
 The patches are applied to your own copy of the game: drop a clean `.wbfs`, `.iso`, or `main.dol`
 onto the patcher and play the result on a Wii (USB loader) or in Dolphin. Gecko codes and
@@ -18,7 +18,7 @@ Riivolution patches are also included.
   via Wii Remote extension port with Left Stick steering and pitch.
 - **Story Mode & Party Mode**: Party mode native GC support is preserved while story mode
   now supports GameCube & Classic Controllers seamlessly.
-- **Cross-Region Support**: USA (`RSRE8P`) and Europe (`RSRP8P`). The Japanese release is not supported yet.
+- **Cross-Region Support**: USA (`RSRE8P`), Europe (`RSRP8P`) and Japan (`RSRJ8P`).
 - **No Wii Remote needed**: a GameCube Controller works on its own. If a Wii Remote is connected too, its buttons still work and its tilt is ignored while you use the pad. A Classic Controller needs its Wii Remote.
 
 ## Controls
@@ -87,7 +87,7 @@ python3 tools/patcher.py /path/to/main.dol /path/to/patched_main.dol --combo
 
 The prebuilt definitions in `tools/prebuilt/` are generated from `src/pad/` with devkitPPC:
 ```bash
-python3 tools/build.py --dol RSRE01=usa/main.dol --dol RSRP01=pal/main.dol
+python3 tools/build.py --dol RSRE01=usa/main.dol --dol RSRP01=pal/main.dol --dol RSRJ01=jpn/main.dol
 python3 tools/build_codes.py
 ```
 
