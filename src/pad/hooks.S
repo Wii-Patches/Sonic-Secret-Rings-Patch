@@ -12,7 +12,7 @@
 #if defined(HOOK_REMOTE)
     .globl  pad_state
 pad_state:
-    .space  0x40
+    .space  0x60
 #endif
 
     .section .padtail, "ax"

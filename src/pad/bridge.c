@@ -93,10 +93,20 @@ struct state {
     u8 valid[4];
     u32 tick;       /* frames, for the shake's back-and-forth */
     u16 prev[4];    /* per port: last frame's buttons, for press / release (no-remote mode) */
+    u8 lasty[4];    /* per port: the homing-attack button last frame */
+    u8 tleft[4];    /* per port: frames of the forward thrust still to play */
 };
 
 /* what the player is doing, whichever controller it came from */
+/* a one-sample +z spike: in a stage the game rotates it into its
+   "remote thrust forward" bit (0x04000000) = Homing Attack / Jump Dash */
+#define TH_X 0.0f
+#define TH_Y 0.0f
+#define TH_Z 3.0f
+#define TH_FRAMES 1
+
 struct in {
+    u32 thrust;     /* forward thrust (homing attack / jump dash): frame 1, 2, ... or 0 */
     u32 btn;        /* WM_* */
     float sx, sy;   /* left stick, -1..1 */
     float cx, cy;   /* C-stick / right stick, -1..1 */
@@ -153,6 +163,14 @@ static __attribute__((unused)) void accel(const struct in *v, u32 tick, float *a
 {
     const float tilt = 0.72f;
     float x, z, y;
+    if (v->thrust) {
+        /* a thrust reads as a short push one way, then the stop the other way */
+        float s = v->thrust == 1 ? 1.0f : -1.0f;
+        *ax = s * TH_X;
+        *ay = -1.0f + s * TH_Y;
+        *az = s * TH_Z;
+        return;
+    }
     if (absf(v->cx) > 0.5f || absf(v->cy) > 0.5f) {
         float s = (tick & 1) ? 1.0f : -1.0f;
         *ax = 3.4f * s;
@@ -166,6 +184,21 @@ static __attribute__((unused)) void accel(const struct in *v, u32 tick, float *a
     *ax = x;
     *ay = -sqrtf_(y > 0 ? y : 0);
     *az = z;
+}
+
+/* the homing-attack button plays one short thrust per press */
+static __attribute__((unused)) void thrust(struct state *st, u32 chan, int held, struct in *v)
+{
+    if (chan >= 4) {
+        v->thrust = 0;
+        return;
+    }
+    if (held && !st->lasty[chan])
+        st->tleft[chan] = TH_FRAMES;
+    st->lasty[chan] = (u8)held;
+    v->thrust = st->tleft[chan] ? TH_FRAMES + 1 - st->tleft[chan] : 0;
+    if (st->tleft[chan])
+        st->tleft[chan]--;
 }
 
 #if defined(USE_GC) && !defined(HOOK_PROBE)
@@ -194,6 +227,7 @@ static int gc_get(struct state *st, const u8 *pad, u32 chan, struct in *v)
     if (b & PAD_B) o |= WM_1;
     if (b & PAD_X) o |= WM_A;
     if (b & PAD_Y) o |= WM_B;
+    v->thrust = (b & PAD_Y) != 0;    /* homing attack */
     if (b & PAD_L) o |= WM_UP;              /* step left */
     if (b & PAD_R) o |= WM_DOWN;            /* step right */
     if (b & PAD_START) o |= WM_PLUS;
@@ -235,6 +269,7 @@ static int cc_get(const u8 *k, struct in *v)
     if (b & CL_B) o |= WM_1;
     if (b & CL_X) o |= WM_A;
     if (b & CL_Y) o |= WM_B;
+    v->thrust = (b & CL_Y) != 0;     /* homing attack */
     if (b & (CL_L | CL_ZL)) o |= WM_UP;
     if (b & (CL_R | CL_ZR)) o |= WM_DOWN;
     if (b & CL_PLUS) o |= WM_PLUS;
@@ -273,6 +308,7 @@ s32 pad_remote(u8 *k, s32 n, u32 chan, struct state *st)
         return n;
     if (n <= 0)
         return n;
+    thrust(st, chan, v.thrust, &v);
     accel(&v, st->tick, &ax, &ay, &az);
     for (i = 0; i < n; i++) {
         u8 *s = k + i * KPAD_SIZE;
@@ -311,6 +347,7 @@ s32 pad_top(const u8 *pad, u32 chan, u8 *conn, u8 *k, void *rec)
     st->tick++;
     for (i = 0; i < KPAD_SIZE; i++)
         k[i] = 0;
+    thrust(st, chan, v.thrust, &v);
     accel(&v, st->tick, &ax, &ay, &az);
     *(u32 *)(k + K_HOLD) = v.btn;
     *(u32 *)(k + K_HOLD + 4) = v.btn & ~st->prev[chan];     /* trig */

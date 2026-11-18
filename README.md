@@ -32,7 +32,7 @@ Riivolution patches are also included.
 | **A** | Button 2 | Jump / Accelerate |
 | **B** | Button 1 | Brake / Backstep |
 | **X** | Button A | Speed Break |
-| **Y** | Button B | Time Break |
+| **Y** | Button B + thrust | Time Break; Homing Attack / Jump Dash in mid-air |
 | **C-Stick** | Shake | Shake (rub the ring, Speed Break) |
 | **L** | D-Pad Up | Step Left |
 | **R** | D-Pad Down | Step Right |
@@ -49,7 +49,7 @@ Riivolution patches are also included.
 | **A** | Button 2 | Jump / Accelerate |
 | **B** | Button 1 | Brake / Backstep |
 | **X** | Button A | Speed Break |
-| **Y** | Button B | Time Break |
+| **Y** | Button B + thrust | Time Break; Homing Attack / Jump Dash in mid-air |
 | **Right Stick** | Shake | Shake (rub the ring, Speed Break) |
 | **L / ZL** | D-Pad Up | Step Left |
 | **R / ZR** | D-Pad Down | Step Right |
